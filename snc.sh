@@ -23,11 +23,11 @@ then
 fi
 
 INSTALL_DIR=crc-tmp-install-data
-SNC_PRODUCT_NAME=${SNC_PRODUCT_NAME:-crc}
-SNC_CLUSTER_MEMORY=${SNC_CLUSTER_MEMORY:-14336}
-SNC_CLUSTER_CPUS=${SNC_CLUSTER_CPUS:-6}
+SNC_PRODUCT_NAME=${SNC_PRODUCT_NAME:-sno}
+SNC_CLUSTER_MEMORY=${SNC_CLUSTER_MEMORY:-20336}
+SNC_CLUSTER_CPUS=${SNC_CLUSTER_CPUS:-8}
 CRC_VM_DISK_SIZE=${CRC_VM_DISK_SIZE:-33285996544}
-BASE_DOMAIN=${CRC_BASE_DOMAIN:-testing}
+BASE_DOMAIN=${CRC_BASE_DOMAIN:-redhat.com}
 CRC_PV_DIR="/mnt/pv-data"
 SSH="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i id_ecdsa_crc"
 SCP="scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i id_ecdsa_crc"
@@ -138,7 +138,8 @@ ${YQ} eval ".sshKey = \"$(cat id_ecdsa_crc.pub)\"" --inplace ${INSTALL_DIR}/inst
 OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE=$OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE ${OPENSHIFT_INSTALL} --dir ${INSTALL_DIR} create manifests
 
 # Add CVO overrides before first start of the cluster. Objects declared in this file won't be created.
-${YQ} eval-all --inplace 'select(fileIndex == 0) * select(filename == "cvo-overrides.yaml")' ${INSTALL_DIR}/manifests/cvo-overrides.yaml cvo-overrides.yaml
+echo "skip!"
+# ${YQ} eval-all --inplace 'select(fileIndex == 0) * select(filename == "cvo-overrides.yaml")' ${INSTALL_DIR}/manifests/cvo-overrides.yaml cvo-overrides.yaml
 
 # Add custom domain to cluster-ingress
 ${YQ} eval --inplace ".spec.domain = \"apps-${SNC_PRODUCT_NAME}.${BASE_DOMAIN}\"" ${INSTALL_DIR}/manifests/cluster-ingress-02-config.yml
@@ -159,9 +160,9 @@ cp 99_master-chronyd-mask.yaml $INSTALL_DIR/openshift/
 # Add dummy network unit file
 cp 99-openshift-machineconfig-master-dummy-networks.yaml $INSTALL_DIR/openshift/
 # Add kubelet config resource to make change in kubelet
-DYNAMIC_DATA=$(base64 -w0 node-sizing-enabled.env) envsubst < 99_master-node-sizing-enabled-env.yaml.in > $INSTALL_DIR/openshift/99_master-node-sizing-enabled-env.yaml
+echo "skip!"
 # Add codeReadyContainer as invoker to identify it with telemeter
-export OPENSHIFT_INSTALL_INVOKER="codeReadyContainers"
+export OPENSHIFT_INSTALL_INVOKER="NSO-poc"
 export KUBECONFIG=${INSTALL_DIR}/auth/kubeconfig
 
 OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE=$OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE ${OPENSHIFT_INSTALL} --dir ${INSTALL_DIR} create ignition-configs ${OPENSHIFT_INSTALL_EXTRA_ARGS}
@@ -169,6 +170,8 @@ OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE=$OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRI
 cat <<< $(${JQ} '.systemd.units += [{"mask": true, "name": "chronyd.service"}]' ${INSTALL_DIR}/bootstrap.ign) > ${INSTALL_DIR}/bootstrap.ign
 
 ${OPENSHIFT_INSTALL} --dir ${INSTALL_DIR} create cluster ${OPENSHIFT_INSTALL_EXTRA_ARGS} || ${OC} adm must-gather --dest-dir ${INSTALL_DIR}
+
+echo "installation started"
 
 if [[ ${CERT_ROTATION} == "enabled" ]]
 then
@@ -191,19 +194,22 @@ create_pvs ${BUNDLE_TYPE}
 # https://github.com/openshift/cluster-version-operator/blob/master/docs/dev/clusterversion.md#setting-objects-unmanaged
 # Objects declared in this file are still created by the CVO at startup.
 # The CVO won't modify these objects anymore with the following command. Hence, we can remove them afterwards.
-retry ${OC} patch clusterversion version --type json -p "$(cat cvo-overrides-after-first-run.yaml)"
+echo "skip!"
+# retry ${OC} patch clusterversion version --type json -p "$(cat cvo-overrides-after-first-run.yaml)"
 
 # Scale route deployment from 2 to 1
-retry ${OC} scale --replicas=1 ingresscontroller/default -n openshift-ingress-operator
+echo "skip!"
+# retry ${OC} scale --replicas=1 ingresscontroller/default -n openshift-ingress-operator
 
 # Set default route for registry CRD from false to true.
 retry ${OC} patch config.imageregistry.operator.openshift.io/cluster --patch '{"spec":{"defaultRoute":true}}' --type=merge
 
 # Add a tip in the login page
-secret_template=$(retry ${OC} get secrets -n openshift-authentication v4-0-config-system-ocp-branding-template -o json)
-${JQ} -r '.data["login.html"]' <(echo "${secret_template}") | base64 -d > login.html
-${PATCH} login.html < login.html.patch
-retry ${OC} create secret generic login-template --from-file=login.html -n openshift-config
+echo "skip!"
+#secret_template=$(retry ${OC} get secrets -n openshift-authentication v4-0-config-system-ocp-branding-template -o json)
+# ${JQ} -r '.data["login.html"]' <(echo "${secret_template}") | base64 -d > login.html
+# ${PATCH} login.html < login.html.patch
+# retry ${OC} create secret generic login-template --from-file=login.html -n openshift-config
 
 # Generate the htpasswd file to have admin and developer user
 generate_htpasswd_file ${INSTALL_DIR} ${HTPASSWD_FILE}
@@ -218,7 +224,7 @@ retry ${OC} create clusterrolebinding kubeadmin --clusterrole=cluster-admin --us
 retry ${OC} delete secrets kubeadmin -n kube-system
 
 # Add security message on the web console
-retry ${OC} create -f security-notice.yaml
+# retry ${OC} create -f security-notice.yaml
 
 # Remove the Cluster ID with a empty string.
 retry ${OC} patch clusterversion version -p '{"spec":{"clusterID":""}}' --type merge
